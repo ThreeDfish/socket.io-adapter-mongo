@@ -17,7 +17,15 @@ const mockgoose = new Mockgoose(mongooseInstance);
 before(async function() {
    this.timeout(60000);
    await mockgoose.prepareStorage();
-   await mongoose.connect('mongodb://localhost:27017/testing', { useNewUrlParser: true, useUnifiedTopology: true });
+   try {
+      await mongoose.connect('mongodb://localhost:27017/testing', {
+         useNewUrlParser: true,
+         useUnifiedTopology: true
+      });
+   } catch (err) {
+      console.error('Failed to connect to MongoDB:', err);
+      throw err;
+   }
 });
 
 after(async () => {
@@ -36,8 +44,79 @@ after(async () => {
 
    describe(name, function() {
 
-      beforeEach(init(options));
-      afterEach(cleanup);
+      beforeEach(async function() {
+         const server1 = http();
+         const server2 = http();
+         const server3 = http();
+
+         const srv1 = io(server1);
+         const srv2 = io(server2);
+         const srv3 = io(server3);
+
+         namespace1 = srv1.of('/');
+         namespace2 = srv2.of('/');
+         namespace3 = srv3.of('/');
+
+         const port1 = 54000 + (Math.random() * 1000 | 0);
+         const port2 = port1 + 1;
+         const port3 = port1 + 2;
+
+         await new Promise((resolve) => server1.listen(port1, resolve));
+         await new Promise((resolve) => server2.listen(port2, resolve));
+         await new Promise((resolve) => server3.listen(port3, resolve));
+
+         client1 = ioc('http://localhost:' + port1);
+         client2 = ioc('http://localhost:' + port2);
+         client3 = ioc('http://localhost:' + port3);
+
+         const adapterOpts = {
+            uri: 'mongodb://localhost:27017/TestingDB',
+            heartbeatInterval: 20,
+            ...options
+         };
+
+         const [adapter1, adapter2, adapter3] = await Promise.all([
+            adapter(adapterOpts),
+            adapter(adapterOpts),
+            adapter(adapterOpts)
+         ]);
+
+         namespace1.adapter(adapter1);
+         namespace2.adapter(adapter2);
+         namespace3.adapter(adapter3);
+
+         socket1 = null;
+         socket2 = null;
+         socket3 = null;
+
+         return new Promise((resolve) => {
+            const checkConnections = () => {
+               if (socket1 && socket2 && socket3) {
+                  resolve();
+               }
+            };
+
+            namespace1.on('connection', function(socket) {
+               socket1 = socket;
+               checkConnections();
+            });
+
+            namespace2.on('connection', function(socket) {
+               socket2 = socket;
+               checkConnections();
+            });
+
+            namespace3.on('connection', function(socket) {
+               socket3 = socket;
+               checkConnections();
+            });
+         });
+      });
+
+      afterEach(function(done) {
+         // Ensure cleanup is called with done callback
+         cleanup(done);
+      });
 
       it('broadcasts', function(done) {
          client1.on('woot', function(a, b, c, d) {

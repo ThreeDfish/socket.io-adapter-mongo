@@ -114,16 +114,16 @@ class MongoAdapter extends Adapter {
       })
    }
 
-   heartbeat() {
+   async heartbeat() {
       if (this.cursor) {
-         this.model.create({
-            channel: this.heartbeatChannel,
-            msg: Buffer.from(this.uid)
-         }, (err) => {
-            if (err) {
-               this.emit('error', err)
-            }
-         })
+         try {
+            await this.model.create({
+               channel: this.heartbeatChannel,
+               msg: Buffer.from(this.uid)
+            });
+         } catch (err) {
+            this.emit('error', err);
+         }
       }
 
       Object.keys(this.nodeIds).forEach((nodeId) => {
@@ -892,14 +892,10 @@ module.exports = function adapter(uriArg, optionsArg = {}) {
       ? uriArg.uri
       : uriArg
 
-   const defaultMongooseOptions = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-   }
-
+   // Default Mongoose options
    const mongooseOptions = typeof options === 'object' && options.mOptions
-      ? Object.assign(defaultMongooseOptions, options.mOptions)
-      : defaultMongooseOptions
+      ? { ...options.mOptions }
+      : {}
 
    const prefix = options.key || 'socket.io'
    const requestsTimeout = options.requestsTimeout || 5000
@@ -909,7 +905,10 @@ module.exports = function adapter(uriArg, optionsArg = {}) {
    const collectionSize = options.collectionSize || 100000 // 100KB
    const mongoose = options.mongoose || new Mongoose()
    if (!options.mongoose && uri) {
-      mongoose.connect(uri, mongooseOptions)
+      mongoose.connect(uri, mongooseOptions).catch(err => {
+         console.error('MongoDB connection error:', err);
+         throw err;
+      });
    }
 
    // mongoose.set('debug', true)
@@ -919,10 +918,19 @@ module.exports = function adapter(uriArg, optionsArg = {}) {
       Message = mongoose.model(collectionName)
    } else {
       const messageSchema = new mongoose.Schema({
-         channel: { type: String, trim: true },
+         channel: { type: String, trim: true, index: true },
          msg: { type: Buffer }
-      }, { capped: collectionSize })
+      }, { 
+         capped: { 
+            size: collectionSize,
+            autoIndexId: true
+         },
+         bufferCommands: false // Disable buffering to ensure immediate errors
+      })
 
+      // Add index for better query performance
+      messageSchema.index({ channel: 1 });
+      
       Message = mongoose.model(collectionName, messageSchema)
    }
 
