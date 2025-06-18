@@ -19,7 +19,13 @@ const requestTypes = {
 
 class MongoAdapter extends Adapter {
    constructor(options = {}, namespace) {
+      // Call the parent constructor with the namespace
       super(namespace)
+      
+      // Ensure we have a proper namespace
+      if (!namespace || !namespace.name) {
+         throw new Error('Invalid namespace provided to MongoAdapter');
+      }
 
       this.uid = uid2(6)
       this.prefix = options.prefix || 'socket.io'
@@ -513,7 +519,10 @@ class MongoAdapter extends Adapter {
 
    async broadcast(packet, opts, remote) {
       packet.nsp = this.nsp.name
-      if (!(remote || (opts && opts.flags && opts.flags.local))) {
+      const isLocal = remote || (opts && opts.flags && opts.flags.local);
+      
+      // Publish to MongoDB if not a local broadcast
+      if (!isLocal) {
          const msg = msgpack.encode([this.uid, packet, opts])
          let channel = this.channel
          if (opts.rooms && opts.rooms.length === 1) {
@@ -529,10 +538,37 @@ class MongoAdapter extends Adapter {
             });
          } catch (err) {
             this.emit('error', err);
+            return;
          }
       }
 
-      super.broadcast(packet, opts)
+      // Handle local delivery without using super.broadcast()
+      const rooms = new Set(opts.rooms || []);
+      const exceptRooms = new Set(opts.except || []);
+      const packetOpts = {
+         preEncoded: true,
+         volatile: opts.flags?.volatile,
+         compress: opts.flags?.compress,
+         wsPreEncoded: true
+      };
+
+      // Handle broadcast to all sockets in the namespace
+      if (rooms.size === 0) {
+         this.nsp.sockets.forEach(socket => {
+            if (!exceptRooms.has(socket.id)) {
+               socket.packet(packet, packetOpts);
+            }
+         });
+      } else {
+         // Handle broadcast to specific rooms
+         const roomsArray = Array.from(rooms);
+         this.nsp.sockets.forEach(socket => {
+            if (roomsArray.some(room => socket.rooms.has(room)) && 
+                !exceptRooms.has(socket.id)) {
+               socket.packet(packet, packetOpts);
+            }
+         });
+      }
    }
 
    /**
