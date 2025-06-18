@@ -831,7 +831,7 @@ class MongoAdapter extends Adapter {
     * @api public
     */
 
-   customRequest(data, fn) {
+   async customRequest(data, fn) {
       if (typeof data === 'function') {
          fn = data
          data = null
@@ -865,14 +865,14 @@ class MongoAdapter extends Adapter {
          timeout: timeout
       }
 
-      this.model.create({
-         channel: this.requestChannel,
-         msg: Buffer.from(request)
-      }, (err) => {
-         if (err) {
-            this.emit('error', err)
-         }
-      })
+      try {
+         await this.model.create({
+            channel: this.requestChannel,
+            msg: Buffer.from(request)
+         });
+      } catch (err) {
+         this.emit('error', err);
+      }
    }
 }
 
@@ -918,14 +918,13 @@ module.exports = function adapter(uriArg, optionsArg = {}) {
       Message = mongoose.model(collectionName)
    } else {
       const messageSchema = new mongoose.Schema({
-         channel: { type: String, trim: true, index: true },
+         channel: { type: String, trim: true },
          msg: { type: Buffer }
       }, { 
          capped: { 
             size: collectionSize,
             autoIndexId: true
-         },
-         bufferCommands: false // Disable buffering to ensure immediate errors
+         }
       })
 
       // Add index for better query performance
