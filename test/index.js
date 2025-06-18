@@ -1,21 +1,27 @@
-var Mockgoose = require('mockgoose').Mockgoose;
-var Mongoose = require('mongoose').Mongoose;
-var http = require('http').Server;
-var io = require('socket.io');
-var ioc = require('socket.io-client');
-var expect = require('expect.js');
-var adapter = require('../');
+const { Mockgoose } = require('mockgoose');
+const mongoose = require('mongoose');
+const Mongoose = mongoose.Mongoose;
+const http = require('http').Server;
+const io = require('socket.io');
+const ioc = require('socket.io-client');
+const expect = require('expect.js');
+const adapter = require('../');
 
-var namespace1, namespace2, namespace3;
-var client1, client2, client3;
-var socket1, socket2, socket3;
+let namespace1, namespace2, namespace3;
+let client1, client2, client3;
+let socket1, socket2, socket3;
 
-var mongoose = new Mongoose()
-var mockgoose = new Mockgoose(mongoose)
+const mongooseInstance = new Mongoose();
+const mockgoose = new Mockgoose(mongooseInstance);
 
-before(function(done) {
-   this.timeout(60000)
-   mockgoose.prepareStorage().then(done);
+before(async function() {
+   this.timeout(60000);
+   await mockgoose.prepareStorage();
+   await mongoose.connect('mongodb://localhost:27017/testing', { useNewUrlParser: true, useUnifiedTopology: true });
+});
+
+after(async () => {
+   await mongoose.disconnect();
 });
 
 [{

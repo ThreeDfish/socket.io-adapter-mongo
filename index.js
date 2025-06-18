@@ -1,4 +1,4 @@
-const Adapter = require('socket.io-adapter')
+const { Adapter } = require('socket.io-adapter')
 const Mongoose = require('mongoose').Mongoose
 const debug = require('debug')('socket.io-mongo-adapter')
 const msgpack = require('notepack.io')
