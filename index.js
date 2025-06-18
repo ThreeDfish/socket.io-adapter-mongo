@@ -511,7 +511,7 @@ class MongoAdapter extends Adapter {
     * @api public
     */
 
-   broadcast(packet, opts, remote) {
+   async broadcast(packet, opts, remote) {
       packet.nsp = this.nsp.name
       if (!(remote || (opts && opts.flags && opts.flags.local))) {
          const msg = msgpack.encode([this.uid, packet, opts])
@@ -522,14 +522,14 @@ class MongoAdapter extends Adapter {
          }
 
          debug('publishing message to channel %s', channel)
-         this.model.create({
-            channel,
-            msg
-         }, (err) => {
-            if (err) {
-               this.emit('error', err)
-            }
-         })
+         try {
+            await this.model.create({
+               channel,
+               msg
+            });
+         } catch (err) {
+            this.emit('error', err);
+         }
       }
 
       super.broadcast(packet, opts)

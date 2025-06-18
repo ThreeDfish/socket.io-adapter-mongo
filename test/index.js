@@ -1,4 +1,3 @@
-const { Mockgoose } = require('mockgoose');
 const mongoose = require('mongoose');
 const Mongoose = mongoose.Mongoose;
 const http = require('http').Server;
@@ -11,17 +10,12 @@ let namespace1, namespace2, namespace3;
 let client1, client2, client3;
 let socket1, socket2, socket3;
 
-const mongooseInstance = new Mongoose();
-const mockgoose = new Mockgoose(mongooseInstance);
-
 before(async function() {
    this.timeout(60000);
-   await mockgoose.prepareStorage();
+   
+   // Connect to local MongoDB instance
    try {
-      await mongoose.connect('mongodb://localhost:27017/testing', {
-         useNewUrlParser: true,
-         useUnifiedTopology: true
-      });
+      await mongoose.connect('mongodb://localhost:27017/test-socket-io-adapter');
    } catch (err) {
       console.error('Failed to connect to MongoDB:', err);
       throw err;
@@ -29,13 +23,15 @@ before(async function() {
 });
 
 after(async () => {
+   // Drop the test database
+   await mongoose.connection.dropDatabase();
    await mongoose.disconnect();
 });
 
 [{
    name: 'socket.io-mongo-adapter',
    options: {
-      uri: 'mongodb://localhost:27017/TestingDB',
+      uri: 'mongodb://localhost:27017/test-socket-io-adapter',
       heartbeatInterval: 20
    }
 }].forEach(function(suite) {
@@ -75,15 +71,20 @@ after(async () => {
             ...options
          };
 
-         const [adapter1, adapter2, adapter3] = await Promise.all([
-            adapter(adapterOpts),
-            adapter(adapterOpts),
-            adapter(adapterOpts)
-         ]);
+         // Create adapter instances with their respective namespaces
+         const Adapter1 = adapter(adapterOpts);
+         const Adapter2 = adapter(adapterOpts);
+         const Adapter3 = adapter(adapterOpts);
 
-         namespace1.adapter(adapter1);
-         namespace2.adapter(adapter2);
-         namespace3.adapter(adapter3);
+         // Initialize adapters with their namespaces
+         const adapter1 = new Adapter1(namespace1);
+         const adapter2 = new Adapter2(namespace2);
+         const adapter3 = new Adapter3(namespace3);
+
+         // Set the adapter on the namespaces
+         namespace1.adapter = adapter1;
+         namespace2.adapter = adapter2;
+         namespace3.adapter = adapter3;
 
          socket1 = null;
          socket2 = null;
@@ -114,8 +115,15 @@ after(async () => {
       });
 
       afterEach(function(done) {
-         // Ensure cleanup is called with done callback
-         cleanup(done);
+         // Clean up adapters
+         Promise.all([
+            adapter1.disconnect(),
+            adapter2.disconnect(),
+            adapter3.disconnect()
+         ]).then(() => {
+            // Ensure cleanup is called with done callback
+            cleanup(done);
+         }).catch(done);
       });
 
       it('broadcasts', function(done) {
